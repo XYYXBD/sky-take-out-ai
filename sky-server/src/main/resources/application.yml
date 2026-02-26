@@ -21,11 +21,11 @@ spring:
 #    password: ${sky.redis.password}
 #    database: ${sky.redis.database}
   data:
-        redis:
-        host: ${sky.redis.host}
-        port: ${sky.redis.port}
-        password: ${sky.redis.password}
-        database: ${sky.redis.database}
+    redis:
+      host: ${sky.redis.host}
+      port: ${sky.redis.port}
+      password: ${sky.redis.password}
+      database: ${sky.redis.database}
 
 mybatis:
   #mapper配置文件
@@ -37,6 +37,7 @@ mybatis:
 
 logging:
   level:
+    dev.langchain4j: debug
     com:
       sky:
         mapper: debug
@@ -66,3 +67,25 @@ sky:
   wechat:
     appid: ${sky.wechat.appid}
     secret: ${sky.wechat.secret}
+
+langchain4j:
+  ollama:
+    chat-model:
+      base-url: "http://localhost:11434"
+      modelName: "qwen3:8b"
+      log-requests: true
+      log-responses: true
+    streaming-chat-model:
+      base-url: "http://localhost:11434"
+      modelName: "qwen3:8b"
+      log-requests: true
+      log-responses: true
+    embedding-model:
+      base-url: "http://localhost:11434"
+      modelName: "nomic-embed-text"
+      log-requests: true
+      log-responses: true
+  community:
+    redis:
+      host: localhost
+      port: 6379
