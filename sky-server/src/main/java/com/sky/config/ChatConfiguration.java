@@ -5,6 +5,7 @@ import dev.langchain4j.data.document.Document;
 import dev.langchain4j.data.document.DocumentSplitter;
 import dev.langchain4j.data.document.loader.ClassPathDocumentLoader;
 import dev.langchain4j.data.document.parser.apache.pdfbox.ApachePdfBoxDocumentParser;
+import dev.langchain4j.data.document.parser.apache.poi.ApachePoiDocumentParser;
 import dev.langchain4j.data.document.splitter.DocumentSplitters;
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.memory.chat.ChatMemoryProvider;
@@ -52,7 +53,7 @@ public class ChatConfiguration {
     @Bean
     public EmbeddingStore store() {
         //加载文档进内存
-        List<Document> documents = ClassPathDocumentLoader.loadDocuments("static/content", new ApachePdfBoxDocumentParser());
+        List<Document> documents = ClassPathDocumentLoader.loadDocuments("static/content", new ApachePoiDocumentParser());
         //构建向量数据库操作对象
         //InMemoryEmbeddingStore store = new InMemoryEmbeddingStore();
         //构建文档分割器
