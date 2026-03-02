@@ -13,8 +13,8 @@ import reactor.core.publisher.Flux;
         streamingChatModel = "ollamaStreamingChatModel",
         //chatMemory = "chatMemory"
         chatMemoryProvider = "chatMemoryProvider",
-        contentRetriever = "contentRetriever",
-        tools = "reservationTool"
+        //contentRetriever = "contentRetriever",
+        tools = {"reservationTool", "retrievalTool"}
 )
 public interface AgentService {
 

@@ -29,6 +29,10 @@ public class ShoppinCartServiceImp implements ShoppingCartService {
     @Autowired
     private SetmealMapper setmealMapper;
 
+    /**
+     * 添加到购物车
+     * @param shoppingCartDTO
+     */
     @Override
     @Transactional
     public void add(ShoppingCartDTO shoppingCartDTO) {
@@ -70,6 +74,10 @@ public class ShoppinCartServiceImp implements ShoppingCartService {
         }
     }
 
+    /**
+     * 查看购物车列表
+     * @return
+     */
     @Override
     public List<ShoppingCart> list() {
         ShoppingCart shoppingCart = new ShoppingCart().builder()

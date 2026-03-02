@@ -164,6 +164,12 @@
             <version>1.0.1-beta6</version>
         </dependency>
 
+        <!-- 针对 macOS 的 Netty DNS 解析库 -->
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-resolver-dns-native-macos</artifactId>
+            <classifier>osx-aarch_64</classifier> <!-- 如果是 Intel 芯片，改为 osx-x86_64 -->
+        </dependency>
 
     </dependencies>
 
