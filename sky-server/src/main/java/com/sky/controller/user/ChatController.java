@@ -1,6 +1,7 @@
 package com.sky.controller.user;
 
 import com.sky.aiService.AgentService;
+import com.sky.context.BaseContext;
 import io.swagger.annotations.Api;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,8 +19,16 @@ public class ChatController {
     private AgentService agentService;
 
     @GetMapping
-    public Flux<String> chat(String memoryId, String message) {
-        log.info("收到对话消息");
+    public Flux<String> chat(@RequestParam String message) {
+        Long userId = BaseContext.getCurrentId();
+        if (userId == null) {
+            throw new IllegalStateException("未登录或token无效");
+        }
+
+        // memoryId 由后端基于当前登录用户生成，避免前端越权指定
+        String memoryId = "user:" + userId;
+
+        log.info("收到对话消息, userId: {}, memoryId: {}", userId, memoryId);
         return agentService.chat(memoryId, message);
     }
 }

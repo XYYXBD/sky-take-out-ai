@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.EnableTransactionManagement;
 @Slf4j
 @EnableCaching
 @EnableScheduling
-//@MapperScan("com.sky.mapper")
+@MapperScan("com.sky.mapper")
 public class SkyApplication {
     public static void main(String[] args) {
         SpringApplication.run(SkyApplication.class, args);
