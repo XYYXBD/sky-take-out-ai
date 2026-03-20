@@ -6,11 +6,14 @@ import dev.langchain4j.data.document.DocumentSplitter;
 import dev.langchain4j.data.document.loader.ClassPathDocumentLoader;
 import dev.langchain4j.data.document.parser.apache.pdfbox.ApachePdfBoxDocumentParser;
 import dev.langchain4j.data.document.parser.apache.poi.ApachePoiDocumentParser;
+import dev.langchain4j.data.document.parser.apache.tika.ApacheTikaDocumentParser;
 import dev.langchain4j.data.document.splitter.DocumentSplitters;
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.memory.chat.ChatMemoryProvider;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.embedding.EmbeddingModel;
+import dev.langchain4j.model.ollama.OllamaChatModel;
+import dev.langchain4j.model.ollama.OllamaModel;
 import dev.langchain4j.rag.content.retriever.ContentRetriever;
 import dev.langchain4j.rag.content.retriever.EmbeddingStoreContentRetriever;
 import dev.langchain4j.store.embedding.EmbeddingStore;
@@ -21,6 +24,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.util.List;
+import java.util.Set;
+
+import static dev.langchain4j.model.chat.Capability.RESPONSE_FORMAT_JSON_SCHEMA;
 
 
 @Configuration
@@ -53,7 +59,7 @@ public class ChatConfiguration {
     @Bean
     public EmbeddingStore store() {
         //加载文档进内存
-        List<Document> documents = ClassPathDocumentLoader.loadDocuments("static/content", new ApachePoiDocumentParser());
+        List<Document> documents = ClassPathDocumentLoader.loadDocuments("static/content", new ApacheTikaDocumentParser());
         //构建向量数据库操作对象
         //InMemoryEmbeddingStore store = new InMemoryEmbeddingStore();
         //构建文档分割器
@@ -76,6 +82,17 @@ public class ChatConfiguration {
                 .embeddingModel(embeddingModel)
                 .minScore(0.5)
                 .maxResults(3)
+                .build();
+    }
+
+    // 构建路由模型对象
+    @Bean("routeModel")
+    public OllamaChatModel routeModel() {
+        return OllamaChatModel.builder()
+                .baseUrl("http://localhost:11434")
+                .modelName("qwen3:8b")
+                .supportedCapabilities(RESPONSE_FORMAT_JSON_SCHEMA)
+                .temperature(0.0)
                 .build();
     }
 }

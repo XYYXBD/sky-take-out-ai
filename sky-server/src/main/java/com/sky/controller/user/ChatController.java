@@ -1,7 +1,7 @@
 package com.sky.controller.user;
 
-import com.sky.aiService.AgentService;
 import com.sky.context.BaseContext;
+import com.sky.service.UnifiedAiChatService;
 import io.swagger.annotations.Api;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,7 +16,7 @@ import reactor.core.publisher.Flux;
 public class ChatController {
 
     @Autowired
-    private AgentService agentService;
+    private UnifiedAiChatService unifiedAiChatService;
 
     @GetMapping
     public Flux<String> chat(@RequestParam String message) {
@@ -26,9 +26,9 @@ public class ChatController {
         }
 
         // memoryId 由后端基于当前登录用户生成，避免前端越权指定
-        String memoryId = "user:" + userId;
+        String memoryId = "chat:user:" + userId;
 
         log.info("收到对话消息, userId: {}, memoryId: {}", userId, memoryId);
-        return agentService.chat(memoryId, message);
+        return unifiedAiChatService.chat(message, userId);
     }
 }

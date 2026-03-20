@@ -14,13 +14,12 @@ import reactor.core.publisher.Flux;
         //chatMemory = "chatMemory"
         chatMemoryProvider = "chatMemoryProvider",
         //contentRetriever = "contentRetriever",
-        tools = {"retrievalTool", "shoppingCartTool"}
+        tools = "shoppingCartTool"
 )
-public interface AgentService {
+public interface OrderAgent {
 
-    /// 与AI模型进行对话
     @SystemMessage(fromResource = "static/system.txt")
-    Flux<String> chat(
+    Flux<String> handleOrderQuery(
             @MemoryId String memoryId,
             @UserMessage String message);
 }
