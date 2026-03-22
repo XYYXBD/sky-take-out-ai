@@ -14,11 +14,14 @@ import reactor.core.publisher.Flux;
         //chatMemory = "chatMemory"
         chatMemoryProvider = "chatMemoryProvider",
         //contentRetriever = "contentRetriever",
-        tools = "shoppingCartTool"
+        // tools = "shoppingCartTool"
+         tools = "shoppingCartTool"
 )
 public interface OrderAgent {
 
-    @SystemMessage(fromResource = "static/system.txt")
+    @SystemMessage("""
+            你负责添加到购物车的功能。
+            """)
     Flux<String> handleOrderQuery(
             @MemoryId String memoryId,
             @UserMessage String message);

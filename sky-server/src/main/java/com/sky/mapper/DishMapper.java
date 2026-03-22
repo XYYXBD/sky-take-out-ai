@@ -82,4 +82,10 @@ public interface DishMapper {
      * @return
      */
     Integer countByMap(Map map);
+
+    /**
+     * 根据名字模糊查询
+     */
+    @Select("select * from dish where name like concat('%',#{name},'%') and status = 1")
+    List<Dish> selectByName(Dish dish);
 }

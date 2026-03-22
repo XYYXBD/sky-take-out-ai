@@ -5,10 +5,12 @@ import com.sky.aiService.IntentRouterAiService;
 import com.sky.aiService.OrderAgent;
 import com.sky.entity.RouteDecision;
 import com.sky.service.UnifiedAiChatService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
+@Slf4j
 @Service
 public class UnifiedAiChatServiceImpl implements UnifiedAiChatService {
     @Autowired

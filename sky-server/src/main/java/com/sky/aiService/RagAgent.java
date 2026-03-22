@@ -19,7 +19,7 @@ import reactor.core.publisher.Flux;
 public interface RagAgent {
 
     /// 与AI模型进行对话
-    @SystemMessage(fromResource = "static/system.txt")
+    @SystemMessage(fromResource = "static/system/ragAgent.txt")
     Flux<String> chat(
             @MemoryId String memoryId,
             @UserMessage String message);

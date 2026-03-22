@@ -91,6 +91,7 @@ public class ChatConfiguration {
         return OllamaChatModel.builder()
                 .baseUrl("http://localhost:11434")
                 .modelName("qwen3:8b")
+                .think(false)
                 .supportedCapabilities(RESPONSE_FORMAT_JSON_SCHEMA)
                 .temperature(0.0)
                 .build();

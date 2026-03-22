@@ -74,11 +74,13 @@ langchain4j:
       modelName: "qwen3:8b"
       log-requests: true
       log-responses: true
+      think: false
     streaming-chat-model:
       base-url: "http://localhost:11434"
       modelName: "qwen3:8b"
       log-requests: true
       log-responses: true
+      think: false
     embedding-model:
       base-url: "http://localhost:11434"
       modelName: "nomic-embed-text"

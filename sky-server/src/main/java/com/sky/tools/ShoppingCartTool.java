@@ -3,8 +3,10 @@ package com.sky.tools;
 import com.sky.constant.StatusConstant;
 import com.sky.dto.ShoppingCartDTO;
 import com.sky.entity.Dish;
+import com.sky.entity.DishFlavor;
 import com.sky.entity.Setmeal;
 import com.sky.entity.ShoppingCart;
+import com.sky.mapper.DishFlavorMapper;
 import com.sky.mapper.DishMapper;
 import com.sky.mapper.SetmealMapper;
 import com.sky.service.ShoppingCartService;
@@ -16,7 +18,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 购物车工具类
@@ -35,6 +41,9 @@ public class ShoppingCartTool {
     @Autowired
     private SetmealMapper setmealMapper;
 
+    @Autowired
+    private DishFlavorMapper dishFlavorMapper;
+
     /**
      * 添加菜品或套餐到购物车
      * 先根据名称模糊查询菜品，如果没有找到再查询套餐
@@ -42,58 +51,127 @@ public class ShoppingCartTool {
      * @param dishName 菜品或套餐名称（支持模糊匹配）
      * @return 操作结果提示信息
      */
-    @Tool("当用户明确表示要点某道菜、加入购物车时调用此工具。参数dishName是菜品或套餐名称，系统会自动查找对应的ID并加入购物车")
-    public String addDishToCart(String dishName) {
+    @Tool("工具A：按菜名查询是否存在。一次只查一个菜名。若存在返回购物车基础DTO信息；若不存在明确说明未查询到")
+    public String queryDishByName(String dishName) {
         try {
-            log.info("AI助手尝试添加商品到购物车: {}", dishName);
+            log.info("按菜名查询商品: {}", dishName);
 
-            // 1. 先查询菜品（只查询起售中的）
-            Dish queryDish = Dish.builder()
-                    .name(dishName)
-                    .status(StatusConstant.ENABLE)
-                    .build();
-            List<Dish> dishes = dishMapper.selectByCategoryId(queryDish);
-
-            if (dishes != null && !dishes.isEmpty()) {
-                // 找到菜品，加入购物车
-                Dish dish = dishes.get(0);
-                log.info("找到菜品: id={}, name={}, price={}", dish.getId(), dish.getName(), dish.getPrice());
-
-                ShoppingCartDTO shoppingCartDTO = new ShoppingCartDTO();
-                shoppingCartDTO.setDishId(dish.getId());
-                shoppingCartService.add(shoppingCartDTO);
-
-                // 获取购物车统计信息
-                return buildCartSummary(dish.getName(), "菜品");
+            if (dishName == null || dishName.trim().isEmpty()) {
+                return "code=INVALID_PARAM; message=请先提供菜名。";
             }
 
-            // 2. 菜品没找到，查询套餐
+            Dish dish = findEnabledDishByName(dishName);
+            if (dish != null) {
+                List<DishFlavor> flavorList = dishFlavorMapper.selectByDishId(dish.getId());
+                List<String> options = parseFlavorOptions(flavorList);
+                boolean needFlavor = !options.isEmpty();
+
+                if (needFlavor) {
+                    return "code=DISH_FOUND_FLAVOR_REQUIRED; message=查询到菜品【" + dish.getName()
+                            + "】，该菜需要先选择口味。; data={dishId=" + dish.getId()
+                            + ", dishName=" + dish.getName() + ", flavors=" + options + "}";
+                }
+                return "code=DISH_FOUND_NO_FLAVOR; message=查询到菜品【" + dish.getName()
+                        + "】，该菜无需补充口味。; data={dishId=" + dish.getId()
+                        + ", dishName=" + dish.getName() + "}";
+            }
+
             Setmeal querySetmeal = Setmeal.builder()
                     .name(dishName)
                     .status(StatusConstant.ENABLE)
                     .build();
             List<Setmeal> setmeals = setmealMapper.list(querySetmeal);
-
             if (setmeals != null && !setmeals.isEmpty()) {
-                // 找到套餐，加入购物车
-                Setmeal setmeal = setmeals.get(0);
-                log.info("找到套餐: id={}, name={}, price={}", setmeal.getId(), setmeal.getName(), setmeal.getPrice());
+                Setmeal setmeal = pickExactSetmeal(dishName, setmeals);
+                return "code=SETMEAL_FOUND; message=查询到套餐【" + setmeal.getName()
+                        + "】，可直接加入购物车。; data={setmealId=" + setmeal.getId()
+                        + ", setmealName=" + setmeal.getName() + "}";
+            }
 
+            return "code=DISH_NOT_FOUND; message=未查询到菜品或套餐【" + dishName + "】。";
+
+        } catch (Exception e) {
+            log.error("查询商品失败: dishName={}, error={}", dishName, e.getMessage(), e);
+            return "code=SYSTEM_ERROR; message=查询商品失败，请稍后重试。";
+        }
+    }
+
+    @Tool("工具B：查询菜品可选口味。仅在该菜需要口味时调用。一次只查一个菜名")
+    public String queryDishFlavors(String dishName) {
+        try {
+            if (dishName == null || dishName.trim().isEmpty()) {
+                return "code=INVALID_PARAM; message=请输入需要查询口味的菜名。";
+            }
+
+            Dish dish = findEnabledDishByName(dishName);
+            if (dish == null) {
+                return "code=DISH_NOT_FOUND; message=未查询到菜品【" + dishName + "】。";
+            }
+
+            List<DishFlavor> flavorList = dishFlavorMapper.selectByDishId(dish.getId());
+            List<String> options = parseFlavorOptions(flavorList);
+            if (options.isEmpty()) {
+                return "code=NO_FLAVOR_REQUIRED; message=菜品【" + dish.getName() + "】无需选择口味。";
+            }
+
+            return "code=FLAVOR_OPTIONS; message=菜品【" + dish.getName() + "】可选口味："
+                    + String.join(" / ", options) + "。请从中选择 1 个口味。; data={dishId="
+                    + dish.getId() + ", dishName=" + dish.getName() + ", flavors=" + options + "}";
+        } catch (Exception e) {
+            log.error("查询口味失败: dishName={}, error={}", dishName, e.getMessage(), e);
+            return "code=SYSTEM_ERROR; message=查询口味失败，请稍后重试。";
+        }
+    }
+
+    @Tool("工具C：加入购物车。每次只能加入一个。输入菜名和可选口味，系统只执行一次加购")
+    public String addOneToCart(String dishName, String dishFlavor) {
+        try {
+            if (dishName == null || dishName.trim().isEmpty()) {
+                return "code=INVALID_PARAM; message=请先提供菜名。";
+            }
+
+            Dish dish = findEnabledDishByName(dishName);
+            if (dish != null) {
+                List<DishFlavor> flavorList = dishFlavorMapper.selectByDishId(dish.getId());
+                List<String> options = parseFlavorOptions(flavorList);
+                boolean needFlavor = !options.isEmpty();
+
+                if (needFlavor && (dishFlavor == null || dishFlavor.trim().isEmpty())) {
+                    return "code=FLAVOR_REQUIRED; message=菜品【" + dish.getName()
+                            + "】需要选择口味。可选口味：" + String.join(" / ", options) + "。";
+                }
+
+                if (needFlavor && !isFlavorValid(dishFlavor, options)) {
+                    return "code=FLAVOR_INVALID; message=菜品【" + dish.getName() + "】可选口味为："
+                            + String.join(" / ", options) + "。你输入的【" + dishFlavor
+                            + "】不在可选范围内，请重新选择 1 个口味。";
+                }
+
+                ShoppingCartDTO shoppingCartDTO = new ShoppingCartDTO();
+                shoppingCartDTO.setDishId(dish.getId());
+                shoppingCartDTO.setDishFlavor(dishFlavor == null ? null : dishFlavor.trim());
+                shoppingCartService.add(shoppingCartDTO);
+
+                return "code=ADD_SUCCESS; message=已加入【" + dish.getName() + "】x1。";
+            }
+
+            Setmeal querySetmeal = Setmeal.builder()
+                    .name(dishName)
+                    .status(StatusConstant.ENABLE)
+                    .build();
+            List<Setmeal> setmeals = setmealMapper.list(querySetmeal);
+            if (setmeals != null && !setmeals.isEmpty()) {
+                Setmeal setmeal = pickExactSetmeal(dishName, setmeals);
                 ShoppingCartDTO shoppingCartDTO = new ShoppingCartDTO();
                 shoppingCartDTO.setSetmealId(setmeal.getId());
                 shoppingCartService.add(shoppingCartDTO);
-
-                // 获取购物车统计信息
-                return buildCartSummary(setmeal.getName(), "套餐");
+                return "code=ADD_SUCCESS; message=已加入【" + setmeal.getName() + "】x1。";
             }
 
-            // 3. 都没找到
-            log.warn("未找到菜品或套餐: {}", dishName);
-            return "抱歉，没有找到名为「" + dishName + "」的菜品或套餐，请确认名称是否正确～";
-
+            return "code=DISH_NOT_FOUND; message=未查询到菜品或套餐【" + dishName + "】。";
         } catch (Exception e) {
-            log.error("添加商品到购物车失败: dishName={}, error={}", dishName, e.getMessage(), e);
-            return "添加失败，系统繁忙，请稍后再试～";
+            log.error("单次加购失败: dishName={}, error={}", dishName, e.getMessage(), e);
+            return "code=SYSTEM_ERROR; message=加购失败，请稍后重试。";
         }
     }
 
@@ -104,22 +182,20 @@ public class ShoppingCartTool {
      * @param dishName 菜品或套餐名称
      * @return 操作结果提示信息
      */
-    @Tool("当用户明确表示要移除某道菜、删除、取消时调用此工具。参数dishName是菜品或套餐名称，系统会自动查找对应的ID并从购物车移除")
+    // 旧能力保留为普通方法，不再作为订单Agent工具暴露
     public String removeDishFromCart(String dishName) {
         try {
             log.info("AI助手尝试从购物车移除商品: {}", dishName);
 
-            // 1. 先查询菜品
             Dish queryDish = Dish.builder()
                     .name(dishName)
                     .build();
-            List<Dish> dishes = dishMapper.selectByCategoryId(queryDish);
+            List<Dish> dishes = dishMapper.selectByName(queryDish);
 
             String itemName = dishName;
 
             if (dishes != null && !dishes.isEmpty()) {
-                // 找到菜品
-                Dish dish = dishes.get(0);
+                Dish dish = pickExactDish(dishName, dishes);
                 itemName = dish.getName();
 
                 ShoppingCartDTO shoppingCartDTO = new ShoppingCartDTO();
@@ -173,7 +249,7 @@ public class ShoppingCartTool {
      * @param dishNames 菜品或套餐名称列表，用逗号分隔，例如："宫保鸡丁,麻婆豆腐,红烧肉"
      * @return 操作结果提示信息
      */
-    @Tool("当用户确认要添加AI推荐的多个菜品时调用此工具。参数dishNames是菜品名称列表，用逗号分隔")
+    // 旧能力保留为普通方法，不再作为订单Agent工具暴露
     @Transactional(rollbackFor = Exception.class)
     public String addDishesToCart(String dishNames) {
         try {
@@ -300,6 +376,17 @@ public class ShoppingCartTool {
         }
     }
 
+    @Tool("工具E：清空购物车。当用户明确要求清空，或质疑购物车内容有误时调用")
+    public String clearCartItems() {
+        try {
+            shoppingCartService.clean();
+            return "已为你清空购物车。为了避免再次出错，请你手动点单。";
+        } catch (Exception e) {
+            log.error("清空购物车失败: {}", e.getMessage(), e);
+            return "系统繁忙，请稍后再试～";
+        }
+    }
+
     // ==================== 私有辅助方法 ====================
 
     /**
@@ -309,15 +396,14 @@ public class ShoppingCartTool {
      * @return 是否添加成功
      */
     private boolean addSingleDish(String dishName) {
-        // 1. 先查询菜品
         Dish queryDish = Dish.builder()
                 .name(dishName)
                 .status(StatusConstant.ENABLE)
                 .build();
-        List<Dish> dishes = dishMapper.selectByCategoryId(queryDish);
+        List<Dish> dishes = dishMapper.selectByName(queryDish);
 
         if (dishes != null && !dishes.isEmpty()) {
-            Dish dish = dishes.get(0);
+            Dish dish = pickExactDish(dishName, dishes);
             ShoppingCartDTO shoppingCartDTO = new ShoppingCartDTO();
             shoppingCartDTO.setDishId(dish.getId());
             shoppingCartService.add(shoppingCartDTO);
@@ -340,6 +426,24 @@ public class ShoppingCartTool {
         }
 
         return false;
+    }
+
+    private Dish pickExactDish(String name, List<Dish> dishes) {
+        for (Dish dish : dishes) {
+            if (dish.getName() != null && dish.getName().equals(name)) {
+                return dish;
+            }
+        }
+        return dishes.get(0);
+    }
+
+    private Setmeal pickExactSetmeal(String name, List<Setmeal> setmeals) {
+        for (Setmeal setmeal : setmeals) {
+            if (setmeal.getName() != null && setmeal.getName().equals(name)) {
+                return setmeal;
+            }
+        }
+        return setmeals.get(0);
     }
 
     /**
@@ -390,5 +494,84 @@ public class ShoppingCartTool {
         result.append("总计：¥").append(String.format("%.2f", totalAmount.doubleValue()));
 
         return result.toString();
+    }
+
+    private Dish findEnabledDishByName(String dishName) {
+        Dish queryDish = Dish.builder()
+                .name(dishName)
+                .status(StatusConstant.ENABLE)
+                .build();
+        List<Dish> dishes = dishMapper.selectByName(queryDish);
+        if (dishes == null || dishes.isEmpty()) {
+            return null;
+        }
+        return pickExactDish(dishName, dishes);
+    }
+
+    private List<String> parseFlavorOptions(List<DishFlavor> flavorList) {
+        if (flavorList == null || flavorList.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        Set<String> options = new LinkedHashSet<>();
+        Pattern valuePattern = Pattern.compile("\"value\"\\s*:\\s*\"([^\"]+)\"");
+
+        for (DishFlavor flavor : flavorList) {
+            if (flavor == null || flavor.getValue() == null) {
+                continue;
+            }
+            String raw = flavor.getValue();
+            Matcher matcher = valuePattern.matcher(raw);
+            boolean matched = false;
+            while (matcher.find()) {
+                matched = true;
+                addFlavorTokens(options, matcher.group(1));
+            }
+            if (!matched) {
+                addFlavorTokens(options, raw);
+            }
+        }
+
+        return new ArrayList<>(options);
+    }
+
+    private void addFlavorTokens(Set<String> options, String text) {
+        if (text == null) {
+            return;
+        }
+        String cleaned = text
+                .replace("[", "")
+                .replace("]", "")
+                .replace("{", "")
+                .replace("}", "")
+                .replace("\"", "");
+
+        for (String token : cleaned.split("[,，/、|]")) {
+            String t = token == null ? "" : token.trim();
+            if (t.isEmpty()) {
+                continue;
+            }
+            if (t.contains(":")) {
+                continue;
+            }
+            options.add(t);
+        }
+    }
+
+    private boolean isFlavorValid(String inputFlavor, List<String> validOptions) {
+        if (inputFlavor == null || validOptions == null || validOptions.isEmpty()) {
+            return false;
+        }
+        String input = normalizeText(inputFlavor);
+        for (String option : validOptions) {
+            if (input.equals(normalizeText(option))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String normalizeText(String text) {
+        return text == null ? "" : text.replaceAll("\\s+", "").trim();
     }
 }
