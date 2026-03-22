@@ -5,6 +5,7 @@ import com.sky.dto.ShoppingCartDTO;
 import com.sky.entity.Dish;
 import com.sky.entity.Setmeal;
 import com.sky.entity.ShoppingCart;
+import com.sky.exception.UserNotLoginException;
 import com.sky.mapper.DishMapper;
 import com.sky.mapper.SetmealMapper;
 import com.sky.mapper.ShoppingCartMapper;
@@ -36,10 +37,15 @@ public class ShoppinCartServiceImp implements ShoppingCartService {
     @Override
     @Transactional
     public void add(ShoppingCartDTO shoppingCartDTO) {
+        addForUser(shoppingCartDTO, requireCurrentUserId());
+    }
+
+    @Override
+    @Transactional
+    public void addForUser(ShoppingCartDTO shoppingCartDTO, Long userId) {
         ShoppingCart shoppingCart = new ShoppingCart();
         BeanUtils.copyProperties(shoppingCartDTO,shoppingCart);
-        //获得用户id
-        shoppingCart.setUserId(BaseContext.getCurrentId());
+        shoppingCart.setUserId(requireUserId(userId));
         //判断商品是否存在
         List<ShoppingCart> shoppingCarts = shoppingCartMapper.list(shoppingCart);
         if(shoppingCarts != null && shoppingCarts.size() >0){
@@ -80,8 +86,13 @@ public class ShoppinCartServiceImp implements ShoppingCartService {
      */
     @Override
     public List<ShoppingCart> list() {
-        ShoppingCart shoppingCart = new ShoppingCart().builder()
-                .userId(BaseContext.getCurrentId())
+        return listForUser(requireCurrentUserId());
+    }
+
+    @Override
+    public List<ShoppingCart> listForUser(Long userId) {
+        ShoppingCart shoppingCart = ShoppingCart.builder()
+                .userId(requireUserId(userId))
                 .build();
         List<ShoppingCart> shoppingCarts = shoppingCartMapper.list(shoppingCart);
         return shoppingCarts;
@@ -92,7 +103,12 @@ public class ShoppinCartServiceImp implements ShoppingCartService {
      */
     @Override
     public void clean() {
-        shoppingCartMapper.cleanByUserId(BaseContext.getCurrentId());
+        cleanForUser(requireCurrentUserId());
+    }
+
+    @Override
+    public void cleanForUser(Long userId) {
+        shoppingCartMapper.cleanByUserId(requireUserId(userId));
     }
 
     /**
@@ -101,10 +117,15 @@ public class ShoppinCartServiceImp implements ShoppingCartService {
     @Override
     @Transactional
     public void sub(ShoppingCartDTO shoppingCartDTO) {
+        subForUser(shoppingCartDTO, requireCurrentUserId());
+    }
+
+    @Override
+    @Transactional
+    public void subForUser(ShoppingCartDTO shoppingCartDTO, Long userId) {
         ShoppingCart shoppingCart = new ShoppingCart();
         BeanUtils.copyProperties(shoppingCartDTO,shoppingCart);
-        //获得用户id
-        shoppingCart.setUserId(BaseContext.getCurrentId());
+        shoppingCart.setUserId(requireUserId(userId));
         //判断商品是否存在
         List<ShoppingCart> shoppingCarts = shoppingCartMapper.list(shoppingCart);
         if(shoppingCarts != null && shoppingCarts.size() >0){
@@ -120,5 +141,16 @@ public class ShoppinCartServiceImp implements ShoppingCartService {
         }else {
             throw new RuntimeException("购物车中无此商品，无法减少");
         }
+    }
+
+    private Long requireCurrentUserId() {
+        return requireUserId(BaseContext.getCurrentId());
+    }
+
+    private Long requireUserId(Long userId) {
+        if (userId == null) {
+            throw new UserNotLoginException("用户上下文缺失，请重新登录后再试");
+        }
+        return userId;
     }
 }

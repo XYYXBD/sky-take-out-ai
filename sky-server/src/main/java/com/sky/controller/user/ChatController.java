@@ -1,6 +1,7 @@
 package com.sky.controller.user;
 
 import com.sky.context.BaseContext;
+import com.sky.exception.UserNotLoginException;
 import com.sky.service.UnifiedAiChatService;
 import io.swagger.annotations.Api;
 import lombok.extern.slf4j.Slf4j;
@@ -22,13 +23,10 @@ public class ChatController {
     public Flux<String> chat(@RequestParam String message) {
         Long userId = BaseContext.getCurrentId();
         if (userId == null) {
-            throw new IllegalStateException("未登录或token无效");
+            throw new UserNotLoginException("未登录或token无效");
         }
 
-        // memoryId 由后端基于当前登录用户生成，避免前端越权指定
-        String memoryId = "chat:user:" + userId;
-
-        log.info("收到对话消息, userId: {}, memoryId: {}", userId, memoryId);
+        log.info("收到对话消息, userId: {}", userId);
         return unifiedAiChatService.chat(message, userId);
     }
 }

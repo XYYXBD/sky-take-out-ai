@@ -1,16 +1,20 @@
 package com.sky.tools;
 
 import com.sky.constant.StatusConstant;
+import com.sky.context.AgentUserContextRegistry;
 import com.sky.dto.ShoppingCartDTO;
 import com.sky.entity.Dish;
 import com.sky.entity.DishFlavor;
 import com.sky.entity.Setmeal;
 import com.sky.entity.ShoppingCart;
+import com.sky.exception.UserNotLoginException;
 import com.sky.mapper.DishFlavorMapper;
 import com.sky.mapper.DishMapper;
 import com.sky.mapper.SetmealMapper;
 import com.sky.service.ShoppingCartService;
+import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.agent.tool.ToolMemoryId;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -43,6 +47,9 @@ public class ShoppingCartTool {
 
     @Autowired
     private DishFlavorMapper dishFlavorMapper;
+
+    @Autowired
+    private AgentUserContextRegistry agentUserContextRegistry;
 
     /**
      * 添加菜品或套餐到购物车
@@ -124,8 +131,15 @@ public class ShoppingCartTool {
     }
 
     @Tool("工具C：加入购物车。每次只能加入一个。输入菜名和可选口味，系统只执行一次加购")
-    public String addOneToCart(String dishName, String dishFlavor) {
+    public String addOneToCart(@ToolMemoryId String memoryId,
+                               @P("菜名") String dishName,
+                               @P(value = "口味（选填）", required = false) String dishFlavor) {
         try {
+            Long userId = requireUserId(memoryId);
+            String normalizedFlavor = normalizeOptionalFlavor(dishFlavor);
+            log.info("addOneToCart start, userId={}, memoryId={}, dishName={}, dishFlavor={}",
+                    userId, memoryId, dishName, normalizedFlavor);
+
             if (dishName == null || dishName.trim().isEmpty()) {
                 return "code=INVALID_PARAM; message=请先提供菜名。";
             }
@@ -136,21 +150,33 @@ public class ShoppingCartTool {
                 List<String> options = parseFlavorOptions(flavorList);
                 boolean needFlavor = !options.isEmpty();
 
-                if (needFlavor && (dishFlavor == null || dishFlavor.trim().isEmpty())) {
+                if (!needFlavor) {
+                    ShoppingCartDTO shoppingCartDTO = new ShoppingCartDTO();
+                    shoppingCartDTO.setDishId(dish.getId());
+                    shoppingCartDTO.setDishFlavor(null);
+                    shoppingCartService.addForUser(shoppingCartDTO, userId);
+                    log.info("addOneToCart no-flavor-needed success, userId={}, memoryId={}, dishId={}, dishFlavor=null",
+                            userId, memoryId, dish.getId());
+                    return "code=NO_FLAVOR_NEEDED; message=菜品【" + dish.getName() + "】无需选择口味，已加入 x1。";
+                }
+
+                if (normalizedFlavor == null) {
                     return "code=FLAVOR_REQUIRED; message=菜品【" + dish.getName()
                             + "】需要选择口味。可选口味：" + String.join(" / ", options) + "。";
                 }
 
-                if (needFlavor && !isFlavorValid(dishFlavor, options)) {
+                if (!isFlavorValid(normalizedFlavor, options)) {
                     return "code=FLAVOR_INVALID; message=菜品【" + dish.getName() + "】可选口味为："
-                            + String.join(" / ", options) + "。你输入的【" + dishFlavor
+                            + String.join(" / ", options) + "。你输入的【" + normalizedFlavor
                             + "】不在可选范围内，请重新选择 1 个口味。";
                 }
 
                 ShoppingCartDTO shoppingCartDTO = new ShoppingCartDTO();
                 shoppingCartDTO.setDishId(dish.getId());
-                shoppingCartDTO.setDishFlavor(dishFlavor == null ? null : dishFlavor.trim());
-                shoppingCartService.add(shoppingCartDTO);
+                shoppingCartDTO.setDishFlavor(normalizedFlavor);
+                shoppingCartService.addForUser(shoppingCartDTO, userId);
+                log.info("addOneToCart add-success, userId={}, memoryId={}, dishId={}, dishFlavor={}",
+                        userId, memoryId, dish.getId(), normalizedFlavor);
 
                 return "code=ADD_SUCCESS; message=已加入【" + dish.getName() + "】x1。";
             }
@@ -164,13 +190,20 @@ public class ShoppingCartTool {
                 Setmeal setmeal = pickExactSetmeal(dishName, setmeals);
                 ShoppingCartDTO shoppingCartDTO = new ShoppingCartDTO();
                 shoppingCartDTO.setSetmealId(setmeal.getId());
-                shoppingCartService.add(shoppingCartDTO);
+                shoppingCartService.addForUser(shoppingCartDTO, userId);
+                log.info("addOneToCart setmeal-success, userId={}, memoryId={}, setmealId={}, dishFlavor=null",
+                        userId, memoryId, setmeal.getId());
                 return "code=ADD_SUCCESS; message=已加入【" + setmeal.getName() + "】x1。";
             }
 
             return "code=DISH_NOT_FOUND; message=未查询到菜品或套餐【" + dishName + "】。";
+        } catch (UserNotLoginException e) {
+            log.warn("addOneToCart missing user context, memoryId={}, dishName={}, dishFlavor={}, error={}",
+                    memoryId, dishName, dishFlavor, e.getMessage());
+            return "code=USER_CONTEXT_MISSING; message=" + e.getMessage() + "。";
         } catch (Exception e) {
-            log.error("单次加购失败: dishName={}, error={}", dishName, e.getMessage(), e);
+            log.error("单次加购失败: memoryId={}, dishName={}, dishFlavor={}, error={}",
+                    memoryId, dishName, dishFlavor, e.getMessage(), e);
             return "code=SYSTEM_ERROR; message=加购失败，请稍后重试。";
         }
     }
@@ -329,11 +362,12 @@ public class ShoppingCartTool {
      * @return 购物车详情信息
      */
     @Tool("当用户询问购物车内容、已点菜品、当前订单时调用此工具，返回购物车中所有商品的详细信息")
-    public String getCartItems() {
+    public String getCartItems(@ToolMemoryId String memoryId) {
         try {
-            log.info("AI助手查看购物车");
+            Long userId = requireUserId(memoryId);
+            log.info("AI助手查看购物车, userId={}, memoryId={}", userId, memoryId);
 
-            List<ShoppingCart> cartItems = shoppingCartService.list();
+            List<ShoppingCart> cartItems = shoppingCartService.listForUser(userId);
 
             if (cartItems == null || cartItems.isEmpty()) {
                 log.info("购物车为空");
@@ -370,6 +404,9 @@ public class ShoppingCartTool {
 
             return result.toString();
 
+        } catch (UserNotLoginException e) {
+            log.warn("查看购物车失败，用户上下文缺失, memoryId={}, error={}", memoryId, e.getMessage());
+            return "code=USER_CONTEXT_MISSING; message=" + e.getMessage() + "。";
         } catch (Exception e) {
             log.error("查看购物车失败: error={}", e.getMessage(), e);
             return "查看购物车失败，系统繁忙，请稍后再试～";
@@ -377,10 +414,15 @@ public class ShoppingCartTool {
     }
 
     @Tool("工具E：清空购物车。当用户明确要求清空，或质疑购物车内容有误时调用")
-    public String clearCartItems() {
+    public String clearCartItems(@ToolMemoryId String memoryId) {
         try {
-            shoppingCartService.clean();
+            Long userId = requireUserId(memoryId);
+            log.info("清空购物车, userId={}, memoryId={}", userId, memoryId);
+            shoppingCartService.cleanForUser(userId);
             return "已为你清空购物车。为了避免再次出错，请你手动点单。";
+        } catch (UserNotLoginException e) {
+            log.warn("清空购物车失败，用户上下文缺失, memoryId={}, error={}", memoryId, e.getMessage());
+            return "code=USER_CONTEXT_MISSING; message=" + e.getMessage() + "。";
         } catch (Exception e) {
             log.error("清空购物车失败: {}", e.getMessage(), e);
             return "系统繁忙，请稍后再试～";
@@ -573,5 +615,21 @@ public class ShoppingCartTool {
 
     private String normalizeText(String text) {
         return text == null ? "" : text.replaceAll("\\s+", "").trim();
+    }
+
+    private String normalizeOptionalFlavor(String dishFlavor) {
+        if (dishFlavor == null) {
+            return null;
+        }
+        String trimmed = dishFlavor.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private Long requireUserId(String memoryId) {
+        Long userId = agentUserContextRegistry.resolve(memoryId);
+        if (userId == null) {
+            throw new UserNotLoginException("用户上下文缺失，无法操作购物车");
+        }
+        return userId;
     }
 }
