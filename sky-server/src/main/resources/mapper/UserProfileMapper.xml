@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.sky.mapper.UserProfileMapper">
+
+    <insert id="upsert">
+        insert into user_profile (user_id, profile_summary, profile_json, version, updated_at)
+        values (#{userId}, #{profileSummary}, #{profileJson}, #{version}, #{updatedAt})
+        on duplicate key update
+            profile_summary = values(profile_summary),
+            profile_json = values(profile_json),
+            version = values(version),
+            updated_at = values(updated_at)
+    </insert>
+</mapper>
+

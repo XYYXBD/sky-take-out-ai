@@ -14,6 +14,7 @@ import com.sky.exception.ShoppingCartBusinessException;
 import com.sky.mapper.*;
 import com.sky.result.PageResult;
 import com.sky.service.OrderService;
+import com.sky.service.UserProfileService;
 import com.sky.utils.WeChatPayUtil;
 import com.sky.vo.OrderPaymentVO;
 import com.sky.vo.OrderSubmitVO;
@@ -49,6 +50,8 @@ public class OrderServiceImp implements OrderService {
     private WeChatPayUtil weChatPayUtil;
     @Autowired
     private WebSocketServer webSocketServer;
+    @Autowired
+    private UserProfileService userProfileService;
 
     /**
      * 提交订单
@@ -59,13 +62,14 @@ public class OrderServiceImp implements OrderService {
     @Override
     @Transactional
     public OrderSubmitVO submit(OrdersSubmitDTO ordersSubmitDTO) {
+        Long userId = BaseContext.getCurrentId();
         //业务异常处理（地址簿/购物车为空等）
         AddressBook addressBook = addressBookMapper.getById(ordersSubmitDTO.getAddressBookId());
         if(addressBook == null){
             throw new AddressBookBusinessException(MessageConstant.ADDRESS_BOOK_IS_NULL);
         }
         ShoppingCart shoppingcart = new ShoppingCart();
-        shoppingcart.setUserId(BaseContext.getCurrentId());
+        shoppingcart.setUserId(userId);
         List<ShoppingCart> shoppingCarts = shoppingCartMapper.list(shoppingcart);
         if (shoppingCarts == null || shoppingCarts.size() == 0) {
             throw new ShoppingCartBusinessException(MessageConstant.SHOPPING_CART_IS_NULL);
@@ -80,7 +84,7 @@ public class OrderServiceImp implements OrderService {
         orders.setPhone(addressBook.getPhone());
         orders.setAddress(addressBook.getDetail());
         orders.setConsignee(addressBook.getConsignee());
-        orders.setUserId(BaseContext.getCurrentId());
+        orders.setUserId(userId);
         orderMapper.insert(orders);
         //order_detail表添加多条数据
         List<OrderDetail> orderDetails = new ArrayList<>();
@@ -92,7 +96,15 @@ public class OrderServiceImp implements OrderService {
         }
         orderDetailMapper.insertBatch(orderDetails);
         //shopping_cart表删除对应用户的购物车数据
-        shoppingCartMapper.cleanByUserId(BaseContext.getCurrentId());
+        shoppingCartMapper.cleanByUserId(userId);
+
+        try {
+            userProfileService.updateProfileAfterOrder(userId, orders);
+        } catch (Exception e) {
+            // 画像更新失败不影响订单主流程，避免业务回滚
+            log.error("user profile update after submit failed, userId={}, orderId={}, error={}",
+                    userId, orders.getId(), e.getMessage(), e);
+        }
         //返回订单提交结果
         OrderSubmitVO orderSubmitVO = new OrderSubmitVO().builder()
                 .id(orders.getId())
