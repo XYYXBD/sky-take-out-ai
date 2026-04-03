@@ -38,7 +38,7 @@ public class UserProfileServiceImpl implements UserProfileService {
     @Override
     public UserProfile getByUserId(Long userId) {
         requireUserId(userId);
-        return userProfileMapper.selectByUserId(userId);
+        return ensureProfileExists(userId);
     }
 
     @Override
@@ -57,10 +57,8 @@ public class UserProfileServiceImpl implements UserProfileService {
             }
         }
 
-        UserProfile dbProfile = userProfileMapper.selectByUserId(userId);
-        if (dbProfile != null) {
-            stringRedisTemplate.opsForValue().set(key, JSON.toJSONString(dbProfile), PROFILE_CACHE_TTL);
-        }
+        UserProfile dbProfile = ensureProfileExists(userId);
+        stringRedisTemplate.opsForValue().set(key, JSON.toJSONString(dbProfile), PROFILE_CACHE_TTL);
         return dbProfile;
     }
 
@@ -68,9 +66,6 @@ public class UserProfileServiceImpl implements UserProfileService {
     public String buildProfileSummary(Long userId) {
         requireUserId(userId);
         UserProfile profile = getByUserIdWithCache(userId);
-        if (profile == null) {
-            return "暂无历史画像，请优先根据用户当前输入完成服务。";
-        }
         if (profile.getProfileSummary() != null && !profile.getProfileSummary().isBlank()) {
             return profile.getProfileSummary();
         }
@@ -159,6 +154,27 @@ public class UserProfileServiceImpl implements UserProfileService {
 
     private String buildCacheKey(Long userId) {
         return PROFILE_CACHE_KEY_PREFIX + userId;
+    }
+
+    private UserProfile ensureProfileExists(Long userId) {
+        UserProfile profile = userProfileMapper.selectByUserId(userId);
+        if (profile != null) {
+            return profile;
+        }
+
+        UserProfileContent emptyContent = new UserProfileContent();
+        String summary = profileTool.buildSummary(emptyContent);
+        UserProfile initProfile = UserProfile.builder()
+                .userId(userId)
+                .profileSummary(summary)
+                .profileJson(JSON.toJSONString(emptyContent))
+                .version(1)
+                .updatedAt(LocalDateTime.now())
+                .build();
+        userProfileMapper.upsert(initProfile);
+
+        log.info("init user profile because not found, userId={}", userId);
+        return initProfile;
     }
 
     private void requireUserId(Long userId) {

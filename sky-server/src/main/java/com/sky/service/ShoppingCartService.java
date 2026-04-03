@@ -14,7 +14,7 @@ public interface ShoppingCartService {
     void add(ShoppingCartDTO shoppingCartDTO);
 
     /**
-     * 按指定用户添加到购物车（用于异步链路避免 ThreadLocal 丢失）
+     * 按指定用户添加到购物车（用于 AI 异步链路）
      */
     void addForUser(ShoppingCartDTO shoppingCartDTO, Long userId);
 
@@ -44,9 +44,4 @@ public interface ShoppingCartService {
      * @param shoppingCartDTO
      */
     void sub(ShoppingCartDTO shoppingCartDTO);
-
-    /**
-     * 按指定用户减少购物车数量
-     */
-    void subForUser(ShoppingCartDTO shoppingCartDTO, Long userId);
 }

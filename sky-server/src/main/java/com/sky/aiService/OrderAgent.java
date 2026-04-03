@@ -19,9 +19,7 @@ import reactor.core.publisher.Flux;
 )
 public interface OrderAgent {
 
-    @SystemMessage("""
-            你负责添加到购物车的功能。
-            """)
+    @SystemMessage(fromResource = "static/system/orderAgent.txt")
     Flux<String> handleOrderQuery(
             @MemoryId String memoryId,
             @UserMessage String message);

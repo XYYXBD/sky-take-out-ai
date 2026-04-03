@@ -37,7 +37,7 @@ public class ShoppinCartServiceImp implements ShoppingCartService {
     @Override
     @Transactional
     public void add(ShoppingCartDTO shoppingCartDTO) {
-        addForUser(shoppingCartDTO, requireCurrentUserId());
+        addForUser(shoppingCartDTO, BaseContext.getCurrentId());
     }
 
     @Override
@@ -45,6 +45,7 @@ public class ShoppinCartServiceImp implements ShoppingCartService {
     public void addForUser(ShoppingCartDTO shoppingCartDTO, Long userId) {
         ShoppingCart shoppingCart = new ShoppingCart();
         BeanUtils.copyProperties(shoppingCartDTO,shoppingCart);
+        //获得用户id
         shoppingCart.setUserId(requireUserId(userId));
         //判断商品是否存在
         List<ShoppingCart> shoppingCarts = shoppingCartMapper.list(shoppingCart);
@@ -86,12 +87,12 @@ public class ShoppinCartServiceImp implements ShoppingCartService {
      */
     @Override
     public List<ShoppingCart> list() {
-        return listForUser(requireCurrentUserId());
+        return listForUser(BaseContext.getCurrentId());
     }
 
     @Override
     public List<ShoppingCart> listForUser(Long userId) {
-        ShoppingCart shoppingCart = ShoppingCart.builder()
+        ShoppingCart shoppingCart = new ShoppingCart().builder()
                 .userId(requireUserId(userId))
                 .build();
         List<ShoppingCart> shoppingCarts = shoppingCartMapper.list(shoppingCart);
@@ -103,7 +104,7 @@ public class ShoppinCartServiceImp implements ShoppingCartService {
      */
     @Override
     public void clean() {
-        cleanForUser(requireCurrentUserId());
+        cleanForUser(BaseContext.getCurrentId());
     }
 
     @Override
@@ -117,15 +118,10 @@ public class ShoppinCartServiceImp implements ShoppingCartService {
     @Override
     @Transactional
     public void sub(ShoppingCartDTO shoppingCartDTO) {
-        subForUser(shoppingCartDTO, requireCurrentUserId());
-    }
-
-    @Override
-    @Transactional
-    public void subForUser(ShoppingCartDTO shoppingCartDTO, Long userId) {
         ShoppingCart shoppingCart = new ShoppingCart();
         BeanUtils.copyProperties(shoppingCartDTO,shoppingCart);
-        shoppingCart.setUserId(requireUserId(userId));
+        //获得用户id
+        shoppingCart.setUserId(BaseContext.getCurrentId());
         //判断商品是否存在
         List<ShoppingCart> shoppingCarts = shoppingCartMapper.list(shoppingCart);
         if(shoppingCarts != null && shoppingCarts.size() >0){
@@ -141,10 +137,6 @@ public class ShoppinCartServiceImp implements ShoppingCartService {
         }else {
             throw new RuntimeException("购物车中无此商品，无法减少");
         }
-    }
-
-    private Long requireCurrentUserId() {
-        return requireUserId(BaseContext.getCurrentId());
     }
 
     private Long requireUserId(Long userId) {

@@ -33,7 +33,7 @@ public class ProfileTool {
 
     public OrderFacts buildOrderFacts(Orders order, List<OrderDetail> details) {
         List<String> dishNames = extractDishNames(details);
-        String cuisine = inferCuisineByDishNames(dishNames);
+        String cuisine = inferCuisineByAi(dishNames);
         String flavor = inferFlavor(order, details);
         String budget = inferBudget(order == null ? null : order.getAmount());
         String dishes = dishNames.isEmpty() ? "未提供" : String.join("，", dishNames.subList(0, Math.min(3, dishNames.size())));
@@ -140,33 +140,30 @@ public class ProfileTool {
         return amount.stripTrailingZeros().toPlainString();
     }
 
-    private String inferCuisineByDishNames(List<String> dishNames) {
+    private String inferCuisineByAi(List<String> dishNames) {
         if (dishNames == null || dishNames.isEmpty()) {
             return "未提供";
         }
-        String joined = String.join("|", dishNames);
-        if (containsAny(joined, "麻婆", "鱼香", "宫保", "回锅", "川")) {
-            return "川菜";
-        }
-        if (containsAny(joined, "粤", "叉烧", "烧腊", "煲仔")) {
-            return "粤菜";
-        }
-        if (containsAny(joined, "湘", "剁椒", "小炒")) {
-            return "湘菜";
-        }
-        if (containsAny(joined, "火锅", "串串", "毛肚")) {
-            return "火锅";
-        }
-        return "家常菜";
-    }
-
-    private boolean containsAny(String source, String... keywords) {
-        for (String keyword : keywords) {
-            if (source.contains(keyword)) {
-                return true;
+        try {
+            JSONObject payload = new JSONObject();
+            payload.put("dishNames", dishNames);
+            String result = userProfileInferenceAiService.inferRecentCuisine(payload.toJSONString());
+            if (result == null || result.isBlank()) {
+                return "未提供";
             }
+
+            try {
+                JSONObject jsonObject = JSON.parseObject(result);
+                String cuisine = normalize(jsonObject.getString("recentCuisine"));
+                return cuisine == null ? "未提供" : cuisine;
+            } catch (Exception ignore) {
+                String cuisine = normalize(result);
+                return cuisine == null ? "未提供" : cuisine;
+            }
+        } catch (Exception e) {
+            log.warn("infer recent cuisine by ai failed, error={}", e.getMessage());
+            return "未提供";
         }
-        return false;
     }
 
     private String safe(String value, String fallback) {
@@ -219,4 +216,5 @@ public class ProfileTool {
         private String favoriteDishes;
     }
 }
+
 
